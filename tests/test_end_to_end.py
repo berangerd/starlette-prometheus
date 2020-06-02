@@ -141,3 +141,41 @@ class TestCasePrometheusMiddlewareFilterUnhandledPaths:
 
         # Asserts: Requests in progress
         assert 'starlette_requests_in_progress{method="GET",path_template="/metrics/"} 1.0' in metrics_text
+
+
+class TestCasePrometheusMiddlewareWithPrefix:
+    @pytest.fixture(scope="class")
+    def app(self):
+        app_ = Starlette()
+        app_.add_middleware(PrometheusMiddleware, prefix="test_")
+        app_.add_route("/metrics/", metrics)
+
+        @app_.route("/foo/")
+        def foo(request):
+            return PlainTextResponse("Foo")
+
+        return app_
+
+    @pytest.fixture
+    def client(self, app):
+        return TestClient(app)
+
+    def test_view_ok_with_prefix(self, client):
+        # Do a request
+        client.get("/foo/")
+
+        # Get metrics
+        response = client.get("/metrics/")
+        metrics_text = response.content.decode()
+
+        # Asserts: Requests
+        assert 'test_starlette_requests_total{method="GET",path_template="/foo/"} 1.0' in metrics_text
+
+        # Asserts: Responses
+        assert (
+            'test_starlette_responses_total{method="GET",path_template="/foo/",status_code="200"} 1.0' in metrics_text
+        )
+
+        # Asserts: Requests in progress
+        assert 'test_starlette_requests_in_progress{method="GET",path_template="/foo/"} 0.0' in metrics_text
+        assert 'test_starlette_requests_in_progress{method="GET",path_template="/metrics/"} 1.0' in metrics_text
